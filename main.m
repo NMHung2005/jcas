@@ -115,9 +115,11 @@ plot(eqDir, 10*log10(P_refGen/max(P_refGen)), '--', 'Color', [0.3 0.3 0.3], 'Dis
 % Ve ket qua cua DE
 plot(eqDir, 10*log10(abs(W_ref'*Aq)/max(abs(W_ref'*Aq))), 'r', 'LineWidth', 1.5, 'DisplayName', 'DE Optimized')
 
+% Ve ket qua cua ILS
+plot(eqDir, 10*log10(abs(W_ils'*Aq)/max(abs(W_ils'*Aq))), 'b--', 'LineWidth', 1.5, 'DisplayName', 'ILS Optimized')
 
 % Cau hinh do thi
-title('So sánh búp sóng tối ưu: DE vs. ILS');
+title('So sánh búp sóng tối ưu: Desired, Conventional, DE, ILS');
 xlabel("Equivalent directions")
 ylabel("|A|, dB")
 xlim([-1 1])
