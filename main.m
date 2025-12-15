@@ -31,50 +31,100 @@ P_init = ones(size(eqDir));
 PM = P_init;
 % Indices of the eq. directions that are to be approximated
 alpha = sort([find(ismember(eqDir, eqDir(1:4:end))), find(PdM)]);
-%% Optimize
-% --- Thiet lap va chay Differential Evolution (voi ham muc tieu co trong so, khong tiem W0) ---
+%% Optimize & Compare DE Variants
+% --- Thiet lap chung cho viec toi uu ---
 
 % 1. Dinh nghia cac tham so cho DE
-de_params.pop_size = 100;     % Kich thuoc quan the
+de_params.pop_size = 150;     % Kich thuoc quan the
 de_params.F = 0.8;            % He so dot bien
 de_params.CR = 0.9;           % Ty le lai ghep
-de_params.max_gens = 1000;    % So the he toi da
+de_params.max_gens = 200;    % So the he toi da (cho vong so sanh)
 
 % --- Tao vector trong so de "phat" sai so o bup phu ---
-sidelobe_penalty = 10; % "Phat" sai so bup phu manh gap 10 lan
+sidelobe_penalty = 100; % "Phat" sai so bup phu manh gap 100 lan
 weights = ones(1, length(alpha));
-% Tim cac diem alpha nam trong vung bup phu (noi PdM = 0)
 sidelobe_indices_in_alpha = find(PdM(alpha) == 0);
-% Tang trong so o cac diem do
 weights(sidelobe_indices_in_alpha) = sidelobe_penalty;
 
-% 2. Dinh nghia ham muc tieu, truyen ca `weights` vao
+% 2. Dinh nghia ham muc tieu
 objective_func = @(w_vec) calculate_DE_cost(w_vec, M, Aq, PdM, alpha, weights);
 
-% 3. Goi ham toi uu DE (phien ban khong co W0)
-best_w_vector_real = optimize_DE(objective_func, M, de_params);
+% --- Chay so sanh cac bien the ---
+variants_to_run = {'rand/1/bin', 'best/1/bin', 'rand-to-best/1/bin', 'rand/2/bin', 'best/2/bin'};
+all_cost_histories = cell(length(variants_to_run), 1);
+final_costs = zeros(length(variants_to_run), 1); % Luu sai so cuoi cung cua moi bien the
+colors = lines(length(variants_to_run)); 
 
-% 4. Tai tao lai vector trong so phuc tu ket qua
+figure; % Tao figure moi cho do thi hoi tu
+hold on;
+
+fprintf('--- BAT DAU SO SANH CAC BIEN THE DE (200 a generation) ---\n');
+for i = 1:length(variants_to_run)
+    variant = variants_to_run{i};
+    [~, cost_history] = optimize_DE(objective_func, M, de_params, variant);
+    all_cost_histories{i} = cost_history;
+    final_costs(i) = cost_history(end); % Luu lai sai so cuoi cung
+    
+    semilogy(1:de_params.max_gens, cost_history, 'DisplayName', variant, 'Color', colors(i,:), 'LineWidth', 1.5);
+end
+fprintf('--- KET THUC SO SANH ---\n\n');
+
+% --- Hoan thien do thi so sanh ---
+title('So sánh sự hội tụ của các biến thể DE');
+xlabel('Thế hệ (Generation)');
+ylabel('Log(Sai số tốt nhất)');
+legend('show', 'Interpreter', 'none', 'Location', 'northeast');
+grid on;
+hold off;
+
+% --- Tim ra bien the tot nhat va chay lai de lay ket qua cuoi cung ---
+[~, best_variant_idx] = min(final_costs);
+best_variant_name = variants_to_run{best_variant_idx};
+fprintf('--- Bien the tot nhat trong so sanh la: %s ---\n', best_variant_name);
+
+fprintf('--- Chay lai bien the tot nhat (%s) voi 1000 a generation de lay ket qua cuoi cung ---\n', best_variant_name);
+de_params.max_gens = 1000; % Su dung lai so the he day du
+[best_w_vector_real, ~] = optimize_DE(objective_func, M, de_params, best_variant_name);
+
+% 4. Tai tao lai vector trong so phuc tu tu ket qua
 W_ref_real_part = best_w_vector_real(1:M);
 W_ref_imag_part = best_w_vector_real(M+1:end);
 w_final_complex = W_ref_real_part + 1j * W_ref_imag_part;
 
 % Chuan hoa ket qua cuoi cung
 W_ref(:, 1) = w_final_complex / norm(w_final_complex);
-%% Plot optimized beams
-plot(eqDir, zeros(size(eqDir)));
+
+%% Run ILS for comparison
+fprintf('--- Bat dau toi uu bang Two-Step ILS ---\n');
+iter_nr_ils = 10; % So vong lap cho ILS
+% Goi ham ILS. W0 va P_init duoc khoi tao o phan %% Reference beam
+W_ils = twoStepILS(iter_nr_ils, alpha, Aq, W0, P_init, PdM);
+% Chuan hoa ket qua ILS de so sanh cong bang
+W_ils = W_ils / norm(W_ils);
+fprintf('--- ILS hoan thanh ---\n');
+
+%% Plot optimized beams (DE vs ILS)
+figure; % Tao figure moi de khong ve de len do thi so sanh hoi tu
 hold on
-plot(eqDir, 10*log10(PdM/max(PdM)), 'm-*')
-hold on
-plot(eqDir, 10*log10(P_refGen/max(P_refGen)), '--black')
-hold on
-plot(eqDir, 10*log10(abs(W_ref'*Aq)/max(abs(W_ref'*Aq))), 'r')
-legend('Initial', 'Desired', 'Conventional 12-element ULA', 'Optimized', ...
-    'Location', 'northoutside', 'NumColumns', 4)
+grid on
+
+% Ve cac duong tham chieu
+plot(eqDir, 10*log10(PdM/max(PdM)), 'm-*', 'DisplayName', 'Desired')
+plot(eqDir, 10*log10(P_refGen/max(P_refGen)), '--', 'Color', [0.3 0.3 0.3], 'DisplayName', 'Conventional')
+
+% Ve ket qua cua DE
+plot(eqDir, 10*log10(abs(W_ref'*Aq)/max(abs(W_ref'*Aq))), 'r', 'LineWidth', 1.5, 'DisplayName', 'DE Optimized')
+
+
+% Cau hinh do thi
+title('So sánh búp sóng tối ưu: DE vs. ILS');
 xlabel("Equivalent directions")
 ylabel("|A|, dB")
 xlim([-1 1])
-ylim([-35, 1])
+ylim([-40, 5])
+legend('Location', 'northoutside', 'NumColumns', 4)
+hold off
+
 %matlab2tikz('InitDesConvOpt.tex', 'height', '5cm', 'width', '8cm', ...
 %    'showInfo', false)
 %% Displace the reference beam
